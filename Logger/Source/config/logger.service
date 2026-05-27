@@ -1,0 +1,11 @@
+[Unit]
+Description=Logger Service
+
+[Service]
+ExecStart=/home/pi/embedded/rpi-io-logger/Logger/Source/build/Logger "logger" "Vives2025"
+Restart=always
+User=root
+WorkingDirectory=/home/pi/embedded/rpi-io-logger/Logger/Source/build
+
+[Install]
+WantedBy=multi-user.target

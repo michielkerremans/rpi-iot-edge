@@ -1,0 +1,11 @@
+[Unit]
+Description=Temperature Sensor MQTT Publisher
+
+[Service]
+ExecStart=/home/pi/embedded/rpi-temp-sensor/TempSensor/Source/build/TempSensor --temp 3
+Restart=always
+User=root
+WorkingDirectory=/home/pi/embedded/rpi-temp-sensor/TempSensor/Source/build
+
+[Install]
+WantedBy=multi-user.target
