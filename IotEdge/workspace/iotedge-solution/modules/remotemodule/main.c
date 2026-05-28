@@ -44,7 +44,7 @@ int main(void)
         return 1;
     }
 
-    send_telemetry(client, "{\"message\": \"telemetry before temperature reading\"}");
+    send_telemetry(client, "{\"status\": \"Module started\"}");
 
     // Initialize TC74 sensor
     TC74_Init();

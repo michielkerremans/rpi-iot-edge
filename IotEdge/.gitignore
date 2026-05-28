@@ -1,4 +1,7 @@
 workspace
+!workspace/iotedge-solution/
+!workspace/iotedge-solution/modules/
+!workspace/iotedge-solution/modules/remotemodule/
 !workspace/iotedge-solution/modules/remotemodule/Source/
 !workspace/iotedge-solution/modules/remotemodule/Source/**
 !workspace/iotedge-solution/modules/remotemodule/main.c
