@@ -1,0 +1,10 @@
+services:
+  iotedge-dev:
+    image: mcr.microsoft.com/iotedge/iotedgedev
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./workspace:/workspace
+    working_dir: /workspace/iotedge-solution
+    environment:
+      - DOCKER_BUILDKIT=1
