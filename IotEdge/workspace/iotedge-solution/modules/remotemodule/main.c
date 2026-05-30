@@ -9,6 +9,20 @@
 #include "iothub.h"
 #include "i2c/tc74.h"
 
+static int desired_temperature = 20; // default desired temperature
+
+static void TwinCallback(DEVICE_TWIN_UPDATE_STATE updateState, const unsigned char *payload, size_t size, void *userContextCallback)
+{
+    printf("Twin update received: %.*s\n", (int)size, payload);
+    const char *key = "\"desired_temperature\":";
+    const char *found = strstr((const char *)payload, key);
+    if (found)
+    {
+        desired_temperature = atoi(found + strlen(key));
+        printf("Updated desired_temperature to %d\n", desired_temperature);
+    }
+}
+
 void send_telemetry(IOTHUB_MODULE_CLIENT_LL_HANDLE client, const char *payload)
 {
     IOTHUB_MESSAGE_HANDLE message = IoTHubMessage_CreateFromString(payload);
@@ -17,6 +31,7 @@ void send_telemetry(IOTHUB_MODULE_CLIENT_LL_HANDLE client, const char *payload)
         printf("Failed to create message\n");
         return;
     }
+    // Queue the message to be sent asynchronously
     if (IoTHubModuleClient_LL_SendEventToOutputAsync(client, message, "output1", NULL, NULL) != IOTHUB_CLIENT_OK)
     {
         printf("Failed to send telemetry\n");
@@ -30,12 +45,14 @@ void send_telemetry(IOTHUB_MODULE_CLIENT_LL_HANDLE client, const char *payload)
 
 int main(void)
 {
+    // Initialize the Azure IoT SDK platform (not the client)
     if (IoTHub_Init() != 0)
     {
         printf("Failed to initialize platform\n");
         return 1;
     }
 
+    // Create the IoT Hub module client using environment variables
     IOTHUB_MODULE_CLIENT_LL_HANDLE client = IoTHubModuleClient_LL_CreateFromEnvironment(MQTT_Protocol);
     if (client == NULL)
     {
@@ -44,21 +61,27 @@ int main(void)
         return 1;
     }
 
+    // Set the device twin callback to receive desired property updates
+    IoTHubModuleClient_LL_SetModuleTwinCallback(client, TwinCallback, NULL);
+
     send_telemetry(client, "{\"status\": \"Module started\"}");
 
     // Initialize TC74 sensor
     TC74_Init();
 
-    uint8_t temp;
+    uint8_t temp, last_temp = 0xFF; // 0xFF is an impossible value for TC74
     char payload[64];
 
-    // Periodically read and send temperature
-    for (int i = 0; i < 10; ++i) // Send 10 times as an example
+    while (1)
     {
         if (TC74_Read(0x48, &temp) == 0)
         {
-            snprintf(payload, sizeof(payload), "{\"temperature\": \"%d\"}", temp);
-            send_telemetry(client, payload);
+            if (temp != last_temp)
+            {
+                snprintf(payload, sizeof(payload), "{\"temperature\": \"%d\"}", temp);
+                send_telemetry(client, payload);
+                last_temp = temp;
+            }
         }
         else
         {
@@ -66,11 +89,9 @@ int main(void)
             send_telemetry(client, "{\"error\": \"Failed to read temperature\"}");
         }
 
-        for (int j = 0; j < 10; ++j)
-        {
-            IoTHubModuleClient_LL_DoWork(client);
-            ThreadAPI_Sleep(100);
-        }
+        // Process the queue
+        IoTHubModuleClient_LL_DoWork(client);
+        ThreadAPI_Sleep(100);
     }
 
     IoTHubModuleClient_LL_Destroy(client);
