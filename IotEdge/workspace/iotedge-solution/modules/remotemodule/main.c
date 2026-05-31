@@ -8,19 +8,21 @@
 #include "iothubtransportmqtt.h"
 #include "iothub.h"
 #include "i2c/tc74.h"
+#include "PJ_RPI.h"
+#include "gpio/gpio.h"
+
+#define GPIO_HEAT 17 // connected to pin 27
+#define GPIO_COOL 19 // connected to pin 26
 
 static int desired_temperature = 20; // default desired temperature
 
 static void TwinCallback(DEVICE_TWIN_UPDATE_STATE updateState, const unsigned char *payload, size_t size, void *userContextCallback)
 {
     printf("Twin update received: %.*s\n", (int)size, payload);
-    const char *key = "\"desired_temperature\":";
-    const char *found = strstr((const char *)payload, key);
-    if (found)
-    {
-        desired_temperature = atoi(found + strlen(key));
-        printf("Updated desired_temperature to %d\n", desired_temperature);
-    }
+
+    const char *found;
+    if ((found = strstr((const char *)payload, "\"desired_temperature\":")))
+        desired_temperature = atoi(found + strlen("\"desired_temperature\":"));
 }
 
 void send_telemetry(IOTHUB_MODULE_CLIENT_LL_HANDLE client, const char *payload)
@@ -43,6 +45,13 @@ void send_telemetry(IOTHUB_MODULE_CLIENT_LL_HANDLE client, const char *payload)
     IoTHubMessage_Destroy(message);
 }
 
+typedef enum
+{
+    MODE_OFF,
+    MODE_HEAT,
+    MODE_COOL
+} Mode;
+
 int main(void)
 {
     // Initialize the Azure IoT SDK platform (not the client)
@@ -63,14 +72,30 @@ int main(void)
 
     // Set the device twin callback to receive desired property updates
     IoTHubModuleClient_LL_SetModuleTwinCallback(client, TwinCallback, NULL);
-
     send_telemetry(client, "{\"status\": \"Module started\"}");
+    printf("Module started.\n");
 
-    // Initialize TC74 sensor
-    TC74_Init();
+    GPIO_Init(); // Initialize GPIO memory mapping
+    send_telemetry(client, "{\"status\": \"GPIO initialized successfully\"}");
+    printf("GPIO initialized successfully.\n");
+
+    TC74_Init(); // Initialize TC74 memory mapping
+    send_telemetry(client, "{\"status\": \"TC74 initialized successfully\"}");
+    printf("TC74 initialized successfully.\n");
+
+    GPIO_Alt(2, 0); // Set GPIO 2 (SDA) to ALT0 (I2C1 SDA)
+    GPIO_Alt(3, 0); // Set GPIO 3 (SCL) to ALT0 (I2C1 SCL)
+
+    GPIO_Write(GPIO_HEAT, 0); // Ensure heater is off
+    GPIO_Write(GPIO_COOL, 0); // Ensure cooler is off
+    send_telemetry(client, "{\"status\": \"GPIOs configured successfully\"}");
+    printf("GPIOs configured successfully.\n");
 
     uint8_t temp, last_temp = 0xFF; // 0xFF is an impossible value for TC74
     char payload[64];
+
+    Mode last_mode = MODE_OFF;
+    Mode current_mode = MODE_OFF;
 
     while (1)
     {
@@ -79,8 +104,39 @@ int main(void)
             if (temp != last_temp)
             {
                 snprintf(payload, sizeof(payload), "{\"temperature\": \"%d\"}", temp);
-                send_telemetry(client, payload);
+                // send_telemetry(client, payload);
                 last_temp = temp;
+
+                if (temp < desired_temperature)
+                {
+                    GPIO_Write(GPIO_HEAT, 1); // Turn on heater
+                    GPIO_Write(GPIO_COOL, 0); // Turn off cooler
+                    current_mode = MODE_HEAT;
+                }
+                else if (temp > desired_temperature)
+                {
+                    GPIO_Write(GPIO_HEAT, 0); // Turn off heater
+                    GPIO_Write(GPIO_COOL, 1); // Turn on cooler
+                    current_mode = MODE_COOL;
+                }
+                else
+                {
+                    GPIO_Write(GPIO_HEAT, 0); // Turn off heater
+                    GPIO_Write(GPIO_COOL, 0); // Turn off cooler
+                    current_mode = MODE_OFF;
+                }
+
+                if (current_mode != last_mode)
+                {
+                    if (current_mode == MODE_HEAT)
+                        send_telemetry(client, "{\"mode\": \"HEAT\"}");
+                    else if (current_mode == MODE_COOL)
+                        send_telemetry(client, "{\"mode\": \"COOL\"}");
+                    else
+                        send_telemetry(client, "{\"mode\": \"OFF\"}");
+
+                    last_mode = current_mode;
+                }
             }
         }
         else
@@ -94,6 +150,7 @@ int main(void)
         ThreadAPI_Sleep(100);
     }
 
+    GPIO_Cleanup();
     IoTHubModuleClient_LL_Destroy(client);
     IoTHub_Deinit();
     return 0;
