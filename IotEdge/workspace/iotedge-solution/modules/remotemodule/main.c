@@ -15,6 +15,7 @@
 #define GPIO_COOL 19 // connected to pin 26
 
 static int desired_temperature = 20; // default desired temperature
+static int temp_telemetry = 0;       // 0 = off, 1 = on for temperature telemetry
 
 static void TwinCallback(DEVICE_TWIN_UPDATE_STATE updateState, const unsigned char *payload, size_t size, void *userContextCallback)
 {
@@ -23,6 +24,9 @@ static void TwinCallback(DEVICE_TWIN_UPDATE_STATE updateState, const unsigned ch
     const char *found;
     if ((found = strstr((const char *)payload, "\"desired_temperature\":")))
         desired_temperature = atoi(found + strlen("\"desired_temperature\":"));
+
+    if ((found = strstr((const char *)payload, "\"temp_telemetry\":")))
+        temp_telemetry = atoi(found + strlen("\"temp_telemetry\":"));
 }
 
 void send_telemetry(IOTHUB_MODULE_CLIENT_LL_HANDLE client, const char *payload)
@@ -104,7 +108,8 @@ int main(void)
             if (temp != last_temp)
             {
                 snprintf(payload, sizeof(payload), "{\"temperature\": \"%d\"}", temp);
-                // send_telemetry(client, payload);
+                if (temp_telemetry)
+                    send_telemetry(client, payload);
                 last_temp = temp;
 
                 if (temp < desired_temperature)
