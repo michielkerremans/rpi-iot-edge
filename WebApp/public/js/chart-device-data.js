@@ -16,7 +16,7 @@ $(document).ready(() =>
       this.maxLen = 50;
       this.timeData = new Array(this.maxLen);
       this.temperatureData = new Array(this.maxLen);
-      this.humidityData = new Array(this.maxLen);
+      // this.humidityData = new Array(this.maxLen);
       this.desiredTemperature = null;
       this.desiredTemperatureData = new Array(this.maxLen);
     }
@@ -25,14 +25,14 @@ $(document).ready(() =>
     {
       this.timeData.push(time);
       this.temperatureData.push(temperature);
-      this.humidityData.push(humidity || null);
+      // this.humidityData.push(humidity || null);
       this.desiredTemperatureData.push(this.desiredTemperature);
 
       if (this.timeData.length > this.maxLen)
       {
         this.timeData.shift();
         this.temperatureData.shift();
-        this.humidityData.shift();
+        // this.humidityData.shift();
         this.desiredTemperatureData.shift();
       }
     }
@@ -87,21 +87,22 @@ $(document).ready(() =>
         pointHoverBorderColor: 'rgba(255, 204, 0, 1)',
         spanGaps: true,
       },
-      {
-        fill: false,
-        label: 'Humidity',
-        yAxisID: 'Humidity',
-        borderColor: 'rgba(24, 120, 240, 1)',
-        pointBoarderColor: 'rgba(24, 120, 240, 1)',
-        backgroundColor: 'rgba(24, 120, 240, 0.4)',
-        pointHoverBackgroundColor: 'rgba(24, 120, 240, 1)',
-        pointHoverBorderColor: 'rgba(24, 120, 240, 1)',
-        spanGaps: true,
-      },
+      // {
+      //   fill: false,
+      //   label: 'Humidity',
+      //   yAxisID: 'Humidity',
+      //   borderColor: 'rgba(24, 120, 240, 1)',
+      //   pointBoarderColor: 'rgba(24, 120, 240, 1)',
+      //   backgroundColor: 'rgba(24, 120, 240, 0.4)',
+      //   pointHoverBackgroundColor: 'rgba(24, 120, 240, 1)',
+      //   pointHoverBorderColor: 'rgba(24, 120, 240, 1)',
+      //   spanGaps: true,
+      // },
       {
         fill: false,
         label: 'Desired Temperature',
-        yAxisID: 'Temperature',
+        // yAxisID: 'Temperature',
+        yAxisID: 'TemperatureRight',
         borderColor: 'rgba(220, 50, 47, 1)',
         backgroundColor: 'rgba(220, 50, 47, 0.2)',
         borderDash: [8, 6],
@@ -127,17 +128,31 @@ $(document).ready(() =>
           beginAtZero: true
         }
       },
+      // {
+      //   id: 'Humidity',
+      //   type: 'linear',
+      //   scaleLabel: {
+      //     labelString: 'Humidity (%)',
+      //     display: true,
+      //   },
+      //   position: 'right',
+      //   ticks: {
+      //     suggestedMin: 0,
+      //     suggestedMax: 100,
+      //     beginAtZero: true
+      //   }
+      // }
       {
-        id: 'Humidity',
+        id: 'TemperatureRight',
         type: 'linear',
         scaleLabel: {
-          labelString: 'Humidity (%)',
+          labelString: 'Temperature (ºC)',
           display: true,
         },
         position: 'right',
         ticks: {
           suggestedMin: 0,
-          suggestedMax: 100,
+          suggestedMax: 50,
           beginAtZero: true
         }
       }]
@@ -164,8 +179,9 @@ $(document).ready(() =>
     const device = trackedDevices.findDevice(listOfDevices[listOfDevices.selectedIndex].text);
     chartData.labels = device.timeData;
     chartData.datasets[0].data = device.temperatureData;
-    chartData.datasets[1].data = device.humidityData;
-    chartData.datasets[2].data = device.desiredTemperatureData;
+    // chartData.datasets[1].data = device.humidityData;
+    // chartData.datasets[2].data = device.desiredTemperatureData;
+    chartData.datasets[1].data = device.desiredTemperatureData;
     myLineChart.update();
   }
   listOfDevices.addEventListener('change', OnSelectionChange, false);
