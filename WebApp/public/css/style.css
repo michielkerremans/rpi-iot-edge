@@ -27,7 +27,8 @@ body select {
   color: #444444;
   line-height: 16px;
   appearance: none;
-  /* this is must */ -webkit-appearance: none;
+  /* this is must */
+  -webkit-appearance: none;
   -moz-appearance: none;
 }
 
@@ -43,4 +44,85 @@ select::-ms-expand {
 
 select:disabled::-ms-expand {
   background: #f60;
+}
+
+.flexHeader {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  gap: 12px;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.small-label {
+  font-size: 0.85rem;
+  color: #333;
+  margin-right: 4px;
+}
+
+.small-input {
+  width: 110px;
+  padding: 4px 6px;
+  font-size: 0.95rem;
+}
+
+.small-input[disabled] {
+  background: #f2f2f2;
+  color: #888;
+}
+
+.save-indicator {
+  font-size: 0.85rem;
+  color: #666;
+  margin-left: 8px;
+  min-width: 120px;
+  display: inline-block;
+}
+
+.save-indicator.saving {
+  color: #0a66ff;
+}
+
+.save-indicator.ok {
+  color: #0a9f3b;
+}
+
+.save-indicator.err {
+  color: #d04545;
+}
+
+/* body title shown under controls */
+.mainTitle {
+  margin: 8px 0 16px;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+/* Override for the small select control so the full placeholder is visible */
+select.small-input {
+  padding: 6px 32px 6px 8px !important;
+  background-position: right 8px center !important;
+  background-repeat: no-repeat !important;
+  background-size: 16px !important;
+  min-width: 160px;
+  max-width: 40%;
+  flex: 0 1 220px;
+  box-sizing: border-box;
+}
+
+/* Keep numeric inputs compact and fixed width */
+input.small-input[type="number"] {
+  flex: 0 0 110px;
+  width: 110px;
+}
+
+/* Allow controls to wrap on very small screens */
+.controls {
+  flex-wrap: wrap;
+  align-items: center;
 }

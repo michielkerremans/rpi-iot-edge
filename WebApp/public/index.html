@@ -20,18 +20,23 @@
 </head>
 
 <body>
-    <h1 class="flexHeader">
-        <span>
-            <span id="deviceCount">0 devices</span>
-            <select id="listOfDevices" class="select_box"></select>
-            <label for="telemetryInterval">Interval (ms)</label>
-            <input id="telemetryInterval" type="number" min="0" step="100" value="5000" />
-            <label for="desiredTemperature" class="small-label">Setpoint (°C)</label>
-            <input id="desiredTemperature" type="number" min="0" max="50" step="1" class="small-input" />
-        </span>
-        <!-- <span>Temperature & Humidity Real-time Data</span> -->
-        <span>Temperature Real-time Data</span>
-    </h1>
+    <header class="flexHeader">
+        <h1 class="mainTitle">Temperature Real-time Data</h1>
+        <div class="controls">
+            <label class="small-label" for="listOfDevices">Device</label>
+            <select id="listOfDevices" class="small-input">
+                <option value="">-- select device --</option>
+            </select>
+
+            <label class="small-label" for="telemetryInterval">Telemetry Interval (ms)</label>
+            <input id="telemetryInterval" class="small-input" type="number" min="0" />
+
+            <label class="small-label" for="desiredTemperature">Desired Temperature (°C)</label>
+            <input id="desiredTemperature" class="small-input" type="number" min="0" max="50" />
+
+            <span id="saveStatus" class="save-indicator" aria-live="polite"></span>
+        </div>
+    </header>
     <div>
         <canvas id="iotChart"></canvas>
     </div>
