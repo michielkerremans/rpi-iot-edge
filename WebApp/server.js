@@ -29,23 +29,66 @@ const moduleId = process.env.ModuleId || 'remotemodule';
 const registry = Registry.fromConnectionString(iotHubConnectionString);
 const getModuleTwinAsync = promisify(registry.getModuleTwin).bind(registry);
 
-async function readDesiredTemperature(deviceId)
+async function readModuleSettings(deviceId)
 {
   try
   {
     const twin = await getModuleTwinAsync(deviceId, moduleId);
-    const value = twin?.properties?.desired?.desired_temperature;
-    return typeof value === 'number' ? value : null;
+    const desired = twin?.properties?.desired;
+
+    return {
+      desiredTemperature: typeof desired?.desired_temperature === 'number' ? desired.desired_temperature : null,
+      tempTelemetryEnabled: desired?.temp_telemetry === 1
+    };
   } catch (err)
   {
     console.error('Module twin read failed for %s/%s: %s', deviceId, moduleId, err.message || err);
-    return null;
+    return {
+      desiredTemperature: null,
+      tempTelemetryEnabled: null
+    };
   }
 }
 
 // Redirect requests to the public subdirectory to the root
 const app = express();
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.post('/api/temp-telemetry', (req, res) =>
+{
+  const { deviceId, enabled } = req.body;
+
+  if (!deviceId || typeof enabled !== 'boolean')
+  {
+    res.status(400).json({ error: 'deviceId and enabled are required.' });
+    return;
+  }
+
+  const patch = {
+    properties: {
+      desired: {
+        temp_telemetry: enabled ? 1 : 0
+      }
+    }
+  };
+
+  registry.updateModuleTwin(deviceId, moduleId, patch, '*', (err) =>
+  {
+    if (err)
+    {
+      res.status(500).json({ error: err.message || String(err) });
+      return;
+    }
+
+    res.json({
+      ok: true,
+      deviceId,
+      temp_telemetry: enabled ? 1 : 0
+    });
+  });
+});
+
 app.use((req, res /* , next */) =>
 {
   res.redirect('/');
@@ -86,13 +129,14 @@ const eventHubReader = new EventHubReader(iotHubConnectionString, eventHubConsum
   {
     try
     {
-      const desiredTemperature = await readDesiredTemperature(deviceId);
+      const moduleSettings = await readModuleSettings(deviceId);
 
       const payload = {
         IotData: message,
         MessageDate: date || Date.now().toISOString(),
         DeviceId: deviceId,
-        DesiredTemperature: desiredTemperature
+        DesiredTemperature: moduleSettings.desiredTemperature,
+        TempTelemetryEnabled: moduleSettings.tempTelemetryEnabled
       };
 
       wss.broadcast(JSON.stringify(payload));

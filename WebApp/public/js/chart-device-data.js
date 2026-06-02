@@ -19,6 +19,7 @@ $(document).ready(() =>
       // this.humidityData = new Array(this.maxLen);
       this.desiredTemperature = null;
       this.desiredTemperatureData = new Array(this.maxLen);
+      this.tempTelemetryEnabled = null;
     }
 
     addData(time, temperature, humidity)
@@ -40,6 +41,11 @@ $(document).ready(() =>
     setDesiredTemperature(value)
     {
       this.desiredTemperature = value;
+    }
+
+    setTempTelemetryEnabled(enabled)
+    {
+      this.tempTelemetryEnabled = enabled;
     }
   }
 
@@ -174,9 +180,20 @@ $(document).ready(() =>
   let needsAutoSelect = true;
   const deviceCount = document.getElementById('deviceCount');
   const listOfDevices = document.getElementById('listOfDevices');
+
+  const tempTelemetryToggle = document.getElementById('tempTelemetryToggle');
+  let tempTelemetryEnabled = false;
+
   function OnSelectionChange()
   {
     const device = trackedDevices.findDevice(listOfDevices[listOfDevices.selectedIndex].text);
+
+    if (device?.tempTelemetryEnabled !== null)
+    {
+      tempTelemetryEnabled = device.tempTelemetryEnabled;
+      tempTelemetryToggle.textContent = tempTelemetryEnabled ? 'ON' : 'OFF';
+    }
+
     chartData.labels = device.timeData;
     chartData.datasets[0].data = device.temperatureData;
     // chartData.datasets[1].data = device.humidityData;
@@ -185,6 +202,49 @@ $(document).ready(() =>
     myLineChart.update();
   }
   listOfDevices.addEventListener('change', OnSelectionChange, false);
+
+  tempTelemetryToggle.addEventListener('click', async () =>
+  {
+    const selectedOption = listOfDevices[listOfDevices.selectedIndex];
+    if (!selectedOption)
+    {
+      return;
+    }
+
+    const deviceId = selectedOption.text;
+    const enabled = !tempTelemetryEnabled;
+
+    try
+    {
+      const response = await fetch('/api/temp-telemetry', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          deviceId,
+          enabled
+        })
+      });
+
+      if (!response.ok)
+      {
+        throw new Error('Failed to update temp_telemetry.');
+      }
+
+      tempTelemetryEnabled = enabled;
+      tempTelemetryToggle.textContent = tempTelemetryEnabled ? 'ON' : 'OFF';
+
+      const selectedDevice = trackedDevices.findDevice(deviceId);
+      if (selectedDevice)
+      {
+        selectedDevice.setTempTelemetryEnabled(enabled);
+      }
+    } catch (err)
+    {
+      console.error(err);
+    }
+  });
 
   // When a web socket message arrives:
   // 1. Unpack it
@@ -199,8 +259,9 @@ $(document).ready(() =>
       const messageData = JSON.parse(message.data);
       console.log(messageData);
 
-      // time and either temperature or humidity are required
-      if (!messageData.MessageDate || (messageData.IotData.temperature === undefined && messageData.IotData.humidity === undefined))
+      const hasTemperature = messageData.IotData.temperature !== undefined;
+
+      if (!messageData.MessageDate)
       {
         return;
       }
@@ -213,7 +274,11 @@ $(document).ready(() =>
         if (typeof messageData.DesiredTemperature === 'number')
           existingDeviceData.setDesiredTemperature(messageData.DesiredTemperature);
 
-        existingDeviceData.addData(messageData.MessageDate, messageData.IotData.temperature, messageData.IotData.humidity);
+        if (typeof messageData.TempTelemetryEnabled === 'boolean')
+          existingDeviceData.setTempTelemetryEnabled(messageData.TempTelemetryEnabled);
+
+        if (hasTemperature)
+          existingDeviceData.addData(messageData.MessageDate, messageData.IotData.temperature, messageData.IotData.humidity);
       }
       else
       {
@@ -225,7 +290,11 @@ $(document).ready(() =>
         if (typeof messageData.DesiredTemperature === 'number')
           newDeviceData.setDesiredTemperature(messageData.DesiredTemperature);
 
-        newDeviceData.addData(messageData.MessageDate, messageData.IotData.temperature, messageData.IotData.humidity);
+        if (typeof messageData.TempTelemetryEnabled === 'boolean')
+          newDeviceData.setTempTelemetryEnabled(messageData.TempTelemetryEnabled);
+
+        if (hasTemperature)
+          newDeviceData.addData(messageData.MessageDate, messageData.IotData.temperature, messageData.IotData.humidity);
 
         // add device to the UI list
         const node = document.createElement('option');
