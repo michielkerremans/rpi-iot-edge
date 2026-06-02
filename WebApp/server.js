@@ -83,6 +83,34 @@ app.post('/api/telemetry-interval', (req, res) =>
   });
 });
 
+app.post('/api/desired-temperature', (req, res) =>
+{
+  const { deviceId, desired } = req.body;
+  if (!deviceId || !Number.isFinite(desired) || desired < 0 || desired > 50)
+  {
+    res.status(400).json({ error: 'deviceId and numeric desired (0-50) are required.' });
+    return;
+  }
+
+  const patch = {
+    properties: {
+      desired: {
+        desired_temperature: desired
+      }
+    }
+  };
+
+  registry.updateModuleTwin(deviceId, moduleId, patch, '*', (err) =>
+  {
+    if (err)
+    {
+      res.status(500).json({ error: err.message || String(err) });
+      return;
+    }
+    res.json({ ok: true, deviceId, desired_temperature: desired });
+  });
+});
+
 app.use((req, res /* , next */) =>
 {
   res.redirect('/');

@@ -177,6 +177,7 @@ $(document).ready(() =>
   const listOfDevices = document.getElementById('listOfDevices');
 
   const telemetryIntervalInput = document.getElementById('telemetryInterval');
+  const desiredTemperatureInput = document.getElementById('desiredTemperature');
 
   function OnSelectionChange()
   {
@@ -186,6 +187,11 @@ $(document).ready(() =>
       telemetryIntervalInput.value = device.telemetryIntervalMs;
     else
       telemetryIntervalInput.value = '';
+
+    if (device && device.desiredTemperature != null)
+      desiredTemperatureInput.value = device.desiredTemperature;
+    else
+      desiredTemperatureInput.value = '';
 
     chartData.labels = device.timeData;
     chartData.datasets[0].data = device.temperatureData;
@@ -218,6 +224,34 @@ $(document).ready(() =>
       if (!response.ok) throw new Error('Failed to update telemetry interval');
       const device = trackedDevices.findDevice(deviceId);
       if (device) device.telemetryIntervalMs = interval;
+    } catch (err)
+    {
+      console.error(err);
+    }
+  });
+
+  desiredTemperatureInput.addEventListener('change', async () =>
+  {
+    const selectedOption = listOfDevices[listOfDevices.selectedIndex];
+    if (!selectedOption) return;
+    const deviceId = selectedOption.text;
+    const desired = Number(desiredTemperatureInput.value);
+    if (!Number.isFinite(desired) || desired < 0 || desired > 50)
+    {
+      alert('Desired temperature must be 0–50 °C');
+      return;
+    }
+
+    try
+    {
+      const response = await fetch('/api/desired-temperature', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId, desired })
+      });
+      if (!response.ok) throw new Error('Failed to update desired temperature');
+      const device = trackedDevices.findDevice(deviceId);
+      if (device) device.desiredTemperature = desired;
     } catch (err)
     {
       console.error(err);
