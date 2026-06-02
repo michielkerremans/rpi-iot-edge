@@ -19,7 +19,7 @@ $(document).ready(() =>
       // this.humidityData = new Array(this.maxLen);
       this.desiredTemperature = null;
       this.desiredTemperatureData = new Array(this.maxLen);
-      this.tempTelemetryEnabled = null;
+      this.telemetryIntervalMs = null;
     }
 
     addData(time, temperature, humidity)
@@ -41,11 +41,6 @@ $(document).ready(() =>
     setDesiredTemperature(value)
     {
       this.desiredTemperature = value;
-    }
-
-    setTempTelemetryEnabled(enabled)
-    {
-      this.tempTelemetryEnabled = enabled;
     }
   }
 
@@ -181,18 +176,16 @@ $(document).ready(() =>
   const deviceCount = document.getElementById('deviceCount');
   const listOfDevices = document.getElementById('listOfDevices');
 
-  const tempTelemetryToggle = document.getElementById('tempTelemetryToggle');
-  let tempTelemetryEnabled = false;
+  const telemetryIntervalInput = document.getElementById('telemetryInterval');
 
   function OnSelectionChange()
   {
     const device = trackedDevices.findDevice(listOfDevices[listOfDevices.selectedIndex].text);
 
-    if (device?.tempTelemetryEnabled !== null)
-    {
-      tempTelemetryEnabled = device.tempTelemetryEnabled;
-      tempTelemetryToggle.textContent = tempTelemetryEnabled ? 'ON' : 'OFF';
-    }
+    if (device && device.telemetryIntervalMs != null)
+      telemetryIntervalInput.value = device.telemetryIntervalMs;
+    else
+      telemetryIntervalInput.value = '';
 
     chartData.labels = device.timeData;
     chartData.datasets[0].data = device.temperatureData;
@@ -203,43 +196,28 @@ $(document).ready(() =>
   }
   listOfDevices.addEventListener('change', OnSelectionChange, false);
 
-  tempTelemetryToggle.addEventListener('click', async () =>
+  telemetryIntervalInput.addEventListener('change', async () =>
   {
     const selectedOption = listOfDevices[listOfDevices.selectedIndex];
-    if (!selectedOption)
+    if (!selectedOption) return;
+    const deviceId = selectedOption.text;
+    const interval = Number(telemetryIntervalInput.value);
+    if (!Number.isFinite(interval) || interval < 0)
     {
+      alert('Interval must be a non-negative number');
       return;
     }
 
-    const deviceId = selectedOption.text;
-    const enabled = !tempTelemetryEnabled;
-
     try
     {
-      const response = await fetch('/api/temp-telemetry', {
+      const response = await fetch('/api/telemetry-interval', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          deviceId,
-          enabled
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId, interval })
       });
-
-      if (!response.ok)
-      {
-        throw new Error('Failed to update temp_telemetry.');
-      }
-
-      tempTelemetryEnabled = enabled;
-      tempTelemetryToggle.textContent = tempTelemetryEnabled ? 'ON' : 'OFF';
-
-      const selectedDevice = trackedDevices.findDevice(deviceId);
-      if (selectedDevice)
-      {
-        selectedDevice.setTempTelemetryEnabled(enabled);
-      }
+      if (!response.ok) throw new Error('Failed to update telemetry interval');
+      const device = trackedDevices.findDevice(deviceId);
+      if (device) device.telemetryIntervalMs = interval;
     } catch (err)
     {
       console.error(err);
@@ -274,8 +252,8 @@ $(document).ready(() =>
         if (typeof messageData.DesiredTemperature === 'number')
           existingDeviceData.setDesiredTemperature(messageData.DesiredTemperature);
 
-        if (typeof messageData.TempTelemetryEnabled === 'boolean')
-          existingDeviceData.setTempTelemetryEnabled(messageData.TempTelemetryEnabled);
+        if (typeof messageData.TelemetryIntervalMs === 'number')
+          existingDeviceData.telemetryIntervalMs = messageData.TelemetryIntervalMs;
 
         if (hasTemperature)
           existingDeviceData.addData(messageData.MessageDate, messageData.IotData.temperature, messageData.IotData.humidity);
@@ -290,8 +268,8 @@ $(document).ready(() =>
         if (typeof messageData.DesiredTemperature === 'number')
           newDeviceData.setDesiredTemperature(messageData.DesiredTemperature);
 
-        if (typeof messageData.TempTelemetryEnabled === 'boolean')
-          newDeviceData.setTempTelemetryEnabled(messageData.TempTelemetryEnabled);
+        if (typeof messageData.TelemetryIntervalMs === 'number')
+          newDeviceData.telemetryIntervalMs = messageData.TelemetryIntervalMs;
 
         if (hasTemperature)
           newDeviceData.addData(messageData.MessageDate, messageData.IotData.temperature, messageData.IotData.humidity);

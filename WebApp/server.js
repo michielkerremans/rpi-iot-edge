@@ -38,14 +38,14 @@ async function readModuleSettings(deviceId)
 
     return {
       desiredTemperature: typeof desired?.desired_temperature === 'number' ? desired.desired_temperature : null,
-      tempTelemetryEnabled: desired?.temp_telemetry === 1
+      telemetryIntervalMs: typeof desired?.telemetry_interval_ms === 'number' ? desired.telemetry_interval_ms : null
     };
   } catch (err)
   {
     console.error('Module twin read failed for %s/%s: %s', deviceId, moduleId, err.message || err);
     return {
       desiredTemperature: null,
-      tempTelemetryEnabled: null
+      telemetryIntervalMs: null
     };
   }
 }
@@ -55,20 +55,19 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.post('/api/temp-telemetry', (req, res) =>
+app.post('/api/telemetry-interval', (req, res) =>
 {
-  const { deviceId, enabled } = req.body;
-
-  if (!deviceId || typeof enabled !== 'boolean')
+  const { deviceId, interval } = req.body;
+  if (!deviceId || !Number.isFinite(interval) || interval < 0)
   {
-    res.status(400).json({ error: 'deviceId and enabled are required.' });
+    res.status(400).json({ error: 'deviceId and non-negative numeric interval are required.' });
     return;
   }
 
   const patch = {
     properties: {
       desired: {
-        temp_telemetry: enabled ? 1 : 0
+        telemetry_interval_ms: interval
       }
     }
   };
@@ -80,12 +79,7 @@ app.post('/api/temp-telemetry', (req, res) =>
       res.status(500).json({ error: err.message || String(err) });
       return;
     }
-
-    res.json({
-      ok: true,
-      deviceId,
-      temp_telemetry: enabled ? 1 : 0
-    });
+    res.json({ ok: true, deviceId, telemetry_interval_ms: interval });
   });
 });
 
@@ -136,7 +130,7 @@ const eventHubReader = new EventHubReader(iotHubConnectionString, eventHubConsum
         MessageDate: date || Date.now().toISOString(),
         DeviceId: deviceId,
         DesiredTemperature: moduleSettings.desiredTemperature,
-        TempTelemetryEnabled: moduleSettings.tempTelemetryEnabled
+        TelemetryIntervalMs: moduleSettings.telemetryIntervalMs
       };
 
       wss.broadcast(JSON.stringify(payload));

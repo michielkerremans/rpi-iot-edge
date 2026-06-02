@@ -24,7 +24,8 @@
         <span>
             <span id="deviceCount">0 devices</span>
             <select id="listOfDevices" class="select_box"></select>
-            <button id="tempTelemetryToggle">OFF</button>
+            <label for="telemetryInterval">Interval (ms)</label>
+            <input id="telemetryInterval" type="number" min="0" step="100" value="5000" />
         </span>
         <!-- <span>Temperature & Humidity Real-time Data</span> -->
         <span>Temperature Real-time Data</span>
