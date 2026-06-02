@@ -67,7 +67,7 @@ IH -. reads twin .-> M
 
 ## WebApp UI
 
-![WebApp UI placeholder](images/webapp-screenshot.png)
+![WebApp UI](images/rpi-iot-edge-01-WebApp.png)
 
 ---
 
@@ -168,11 +168,13 @@ Example output showing HEAT/COOL pin states (run on the Pi to inspect pins 17,27
 
 ```bash
 pi@rpi-mk:~ $ pinctrl get 17,27,19,26
-17: ip    pd | lo // GPIO17 = input
-19: ip    pd | lo // GPIO19 = input
-26: ip    pd | lo // GPIO26 = input
+17: op -- pd | lo // GPIO17 = output
+19: op -- pd | hi // GPIO19 = output
+26: ip    pd | hi // GPIO26 = input
 27: ip    pd | lo // GPIO27 = input
 ```
+
+Here the COOL output (GPIO19) is active (hi) and HEAT (GPIO17) is inactive (lo).
 
 - Format: `GPIO#: <mode> <pull> | <level>`
 - Watch `GPIO17` and `GPIO19` to verify heater/cooler outputs toggle as the module changes mode.

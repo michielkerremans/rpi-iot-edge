@@ -107,6 +107,8 @@ int main(void)
     GPIO_Alt(2, 0); // Set GPIO 2 (SDA) to ALT0 (I2C1 SDA)
     GPIO_Alt(3, 0); // Set GPIO 3 (SCL) to ALT0 (I2C1 SCL)
 
+    GPIO_Mode(GPIO_HEAT, 1);  // Set GPIO 17 as output (heater control)
+    GPIO_Mode(GPIO_COOL, 1);  // Set GPIO 19 as output (cooler control)
     GPIO_Write(GPIO_HEAT, 0); // Ensure heater is off
     GPIO_Write(GPIO_COOL, 0); // Ensure cooler is off
     send_telemetry(client, "{\"status\": \"GPIOs configured successfully\"}");
