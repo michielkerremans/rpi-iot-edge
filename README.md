@@ -1,30 +1,26 @@
-# Raspberry Pi GPIO & Sensor GUI
+# Raspberry Pi IoT Edge
 
-A modular, multi-threaded Raspberry Pi C project for real-time GPIO monitoring/control, I2C temperature sensing, MQTT integration, and a GTK3 GUI.
+Lightweight IoT Edge solution for Raspberry Pi combining a native edge module (TC74 I2C sensor + GPIO control) and a Node.js WebApp for telemetry visualization and twin-based control.
 
 ---
 
 ## Features
 
-- **GPIO Monitoring & Control**: Real-time monitoring and toggling of GPIO pins via a GTK3 GUI.
-- **I2C Temperature Sensor**: Reads temperature from a TC74 sensor over I2C and displays it in the GUI.
-- **MQTT Integration**: Publishes and/or receives temperature updates via MQTT (Paho C).
-- **Error Logging**: Logs errors to `error.log` for troubleshooting.
-- **Daemonized Service**: Can run as a background service with systemd.
-- **GPIOD Option**: Supports efficient GPIO control via GPIOD.
-- **Clean Resource Management**: Proper cleanup for GPIO, MQTT, and GTK resources.
+- Native IoT Edge module (`remotemodule`) reading TC74 I2C temperature and controlling HEAT / COOL outputs.
+- Twin-driven control: `desired_temperature` and `telemetry_interval_ms` (0 = disable periodic telemetry).
+- Telemetry pipeline: module → IoT Hub / Event Hubs → WebApp backend → WebSocket → browser UI (Chart.js).
+- Web UI to view telemetry and edit desired twin properties.
+- Deploy helper: `IotEdge/deploy.ps1` automates build / push / deploy for Windows workflows.
 
 ---
 
 ## Technologies
 
 - **PJ's GPIO Library**: Low-level GPIO access for Raspberry Pi.
-- **GPIOD Library**: Modern Linux GPIO control.
 - **I2C (TC74)**: Reads temperature from a Microchip TC74 sensor.
-- **MQTT (Paho C)**: Lightweight messaging protocol for temperature updates.
-- **GTK3**: GUI framework for the desktop interface.
-- **CMake**: Cross-platform build system.
-- **Systemd**: Linux service manager for daemon mode.
+- **Node.js + Express**: WebApp backend.
+- **Chart.js**: Frontend realtime charting (in `WebApp/public/`).
+- **CMake / Docker**: Build native module and images for multiple architectures.
 - **pinctrl**: CLI tool for configuring and reading GPIO pin states.
 
 ---
@@ -33,186 +29,219 @@ A modular, multi-threaded Raspberry Pi C project for real-time GPIO monitoring/c
 
 ```mermaid
 graph TD
-    subgraph Hardware
-        GPIOs["GPIO Pins"]
-        TC74["TC74 Temp Sensor (I2C)"]
-    end
-    subgraph "Abstraction Layer"
-        GPIO_LIB["gpio.c / gpiod.c"]
-        I2C_LIB["i2c1.c / tc74.c"]
-    end
-    subgraph "Application Layer"
-        MAIN["main.c"]
-        GUI["gui.c (GTK3)"]
-        MQTT["mqtt.c"]
-    end
-    GPIOs -- "Read/Write" --> GPIO_LIB
-    TC74 -- "I2C" --> I2C_LIB
-    GPIO_LIB -- "API" --> MAIN
-    I2C_LIB -- "API" --> MAIN
-    MAIN -- "Update" --> GUI
-    MAIN -- "Publish/Subscribe" --> MQTT
+subgraph Hardware
+    GPIOs["GPIO Pins"]
+    TC74["TC74 Temp Sensor (I2C)"]
+M["remotemodule (native module)"]
+end
+subgraph "Abstraction Layer"
+    GPIO_LIB["gpio.c"]
+    I2C_LIB["i2c1.c / tc74.c"]
+end
+subgraph "Application Layer"
+    MAIN["main.c (control loop)"]
+end
+subgraph Cloud
+    IH["IoT Hub / Event Hubs"]
+end
+subgraph Backend
+    WA["WebApp (Node.js)"]
+end
+subgraph Browser
+    UI["Browser UI (Chart.js)"]
+end
+
+GPIOs -- "Read/Write" --> GPIO_LIB
+TC74 -- "I2C" --> I2C_LIB
+GPIO_LIB -- "API" --> MAIN
+I2C_LIB -- "API" --> MAIN
+%% remotemodule runs the control loop and publishes telemetry
+M -->|runs| MAIN
+M -->|telemetry| IH
+IH -->|events| WA
+WA -->|ws broadcast| UI
+UI -->|PATCH twin| WA -->|Registry API| IH
+IH -. reads twin .-> M
+
 ```
+
+## WebApp UI
+
+![WebApp UI placeholder](images/webapp-screenshot.png)
 
 ---
 
-## GUI Screenshot
+## Configuration
 
-<img src="images/rpi-temp-sensor-01-gtkGUI.png" alt="GUI Screenshot" width="500"/>
+How to provide runtime configuration: env files, environment variables, and secret stores.
 
-*GPIO Sensor GUI*
+Set Windows environment variables (PowerShell) — required for local WebApp startup (`npm start`) on Windows
+```powershell
+# Set the variables the WebApp expects
+setx IotHubConnectionString "<YOUR_IOTHUB_CONNECTION_STRING>"
+setx EventHubConsumerGroup "webapp"
+setx ModuleId "remotemodule"
+```
+Restart Visual Studio Code to apply the environment variable changes.
+
+Note: The WebApp reads `IotHubConnectionString` (as required by `WebApp/server.js`). The workspace `.env-template` uses `IOTHUB_CONNECTION_STRING` for deploy helpers; set that in your `.env` file when using the `IotEdge` tooling.
+
+### Environment file
+
+A sanitized template is provided at `IotEdge/workspace/iotedge-solution/.env-template`. Copy it to `.env`, edit the file to set your registry, tag and any credentials required for pushing images, and do not commit `.env` to source control.
+
+```powershell
+cd IotEdge\workspace\iotedge-solution
+Copy-Item .env-template .env
+notepad .env   # edit and save (fill registry, tag, credentials as needed)
+```
+
+See `IotEdge/workspace/iotedge-solution/.env-template` for the full list of configurable variables used by the workspace tooling.
+
+Keep secrets (connection strings, passwords) out of source control; use local `.env` files or CI secret storage for credentials.
+
+Important variables you should set in your local `.env` (from `.env-template`):
+
+- `IOTHUB_CONNECTION_STRING` — IoT Hub connection string used by helpers.
+- `DEVICE_CONNECTION_STRING` — device connection string for device-scoped helpers.
+- `CONTAINER_REGISTRY_SERVER` — container registry host (e.g. myregistry.azurecr.io).
+- `CONTAINER_REGISTRY_USERNAME` — registry username (if required).
+- `CONTAINER_REGISTRY_PASSWORD` — registry password (if required).
+
+---
 
 ## Quick Setup
 
-### 1. Install Dependencies
+### 1) System prerequisites
+- Docker & a container registry (for image builds & device pulls)
+- Node.js (v14+) and npm
+- Azure IoT Hub with permissions to read/update module twins and read events
 
+### 2) Run the WebApp (local development)
 ```bash
-sudo apt update
-sudo apt install -y cmake build-essential pkg-config libgtk-3-dev libgpiod-dev gpiod libpaho-mqtt-dev pinctrl
+cd WebApp
+npm install
+npm start
 ```
+- The UI is served from `WebApp/public/`. Backend reads events and broadcasts telemetry via WebSocket.
 
-### 2. Enable I2C and Connect TC74
-
-- Enable I2C via `raspi-config` or by editing `/boot/config.txt`.
-- Connect the TC74 sensor to the I2C bus.
-
-### 3. Install PJ's GPIO Library
-
-```bash
-cd PJ_RPI
-mkdir build
-cd build
-cmake ..
-make
-sudo make install
+### 3) Deploy IoT Edge solution (Windows PowerShell helper)
+```powershell
+cd IotEdge
+.\deploy.ps1
 ```
-[GitHub: PJ_RPI](https://github.com/Pieter-Jan/PJ_RPI)
+- [IotEdge/deploy.ps1](IotEdge/deploy.ps1) uses repository defaults: it generates a timestamped tag, updates the module's `module.json`, then builds, pushes and deploys the solution via the included docker-compose/iotedgedev flow. For CI or custom behavior you can pass arguments or edit the script.
 
 ---
 
-## Build the Application
+## Build the Native Module (example)
 
+Local native build:
 ```bash
-cd TempSensor/Source
-mkdir build
-cd build
+cd IotEdge/workspace/iotedge-solution/modules/remotemodule
+mkdir -p build && cd build
 cmake ..
 make
 ```
+- Dockerfiles for `amd64`, `arm32v7`, and `arm64v8` are included in the module folder for cross-arch image builds.
 
 ---
 
 ## Usage
 
-### GPIO Pinout
+### GPIO Pinout (HEAT / COOL)
+- `GPIO 17` — HEAT output (symbol `GPIO_HEAT` in `remotemodule` source).
+- `GPIO 19` — COOL output (symbol `GPIO_COOL` in `remotemodule` source).
+- `GPIO 26` — auxiliary input.
+- `GPIO 27` — auxiliary input.
 
-- **GPIO 19** and **GPIO 17** are outputs.
-- **GPIO 26** and **GPIO 27** are inputs.
-- The GUI displays the state of all pins, allows toggling outputs, and shows the temperature from the TC74 sensor (via I2C and/or MQTT).
-- A dropdown and toggle button at the bottom allow selecting and toggling outputs directly.
+The module reads the TC74 temperature and:
+- enables HEAT (`GPIO17`) when temperature < `desired_temperature`,
+- enables COOL (`GPIO19`) when temperature > `desired_temperature`,
+- otherwise turns both outputs off.
+
+(See `IotEdge/workspace/iotedge-solution/modules/remotemodule/main.c` for the exact constants and control logic.)
+
+### Check GPIO pin states (HEAT/COOL verification)
+
+Example output showing HEAT/COOL pin states (run on the Pi to inspect pins 17,27,19,26):
+
+```bash
+pi@rpi-mk:~ $ pinctrl get 17,27,19,26
+17: ip    pd | lo // GPIO17 = input
+19: ip    pd | lo // GPIO19 = input
+26: ip    pd | lo // GPIO26 = input
+27: ip    pd | lo // GPIO27 = input
+```
+
+- Format: `GPIO#: <mode> <pull> | <level>`
+- Watch `GPIO17` and `GPIO19` to verify heater/cooler outputs toggle as the module changes mode.
 
 ---
 
-### GPIO Pin Control
+## Running the Application
 
-Set pin modes:
+- Start WebApp locally:
 ```bash
-pinctrl set 26 ip
-pinctrl set 27 ip
-pinctrl set 19 op
-pinctrl set 17 op
+cd WebApp
+npm install
+npm start
 ```
-Read pin states:
-```bash
-pinctrl get 19,26
-pinctrl get 17,27
-```
-Set outputs high:
-```bash
-pinctrl set 19 op dh
-pinctrl set 17 op dh
-```
+
+- Deploy module to IoT Edge device:
+- Use `IotEdge/deploy.ps1` (Windows) or adapt your CI to build/push images and update `deployment.template.json`.
+- Confirm the module is deployed and connected in Azure Portal or with `az iot` CLI.
 
 ---
 
-### Running the Application
+## WebApp API (useful endpoints)
 
-#### GUI + MQTT Mode
+- `GET /api/module-settings?deviceId=<id>`
+Returns confirmed twin desired properties: `{ deviceId, desiredTemperature, telemetryIntervalMs }`.
 
-To launch the full GUI with MQTT integration:
-```bash
-sudo ./TempSensor --mqtt --gtk
-```
-- `--mqtt` enables MQTT temperature updates.
-- `--gtk` launches the GTK GUI.
+- `POST /api/desired-temperature`
+Body: `{ "deviceId": "<id>", "value": 24 }` → patches `properties.desired.desired_temperature`.
 
-#### Daemon (MQTT Publisher) Mode
+- `POST /api/telemetry-interval`
+Body: `{ "deviceId": "<id>", "value": 5000 }` → patches `properties.desired.telemetry_interval_ms`.
 
-To run as a background service (publishes temperature to MQTT, no GUI):
-```bash
-sudo ./TempSensor --temp 3
-```
-- `--temp 3` reads the TC74 sensor every 3 seconds and publishes to MQTT.
-
-#### Monitor MQTT
-
-To monitor temperature messages published by the sensor:
-```bash
-mosquitto_sub -t sensor/temperature
-```
-
----
-
-## Service Management
-
-Install and manage the systemd service:
-```bash
-sudo cp TempSensor/Source/config/temp-sensor.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable temp-sensor.service
-sudo systemctl start temp-sensor.service
-```
-To restart the service:
-```bash
-sudo systemctl restart temp-sensor.service
-```
-The service file runs:
-`/home/pi/embedded/rpi-temp-sensor/TempSensor/Source/build/TempSensor --temp 3`
-
----
-
-## Error Logging
-
-Errors are logged to `error.log` in the same directory as the executable, with timestamps and messages for troubleshooting.
-
----
-
-## Development Environment (VS Code)
-
-For best IntelliSense, add this to your `.vscode/c_cpp_properties.json`:
+WebSocket broadcasts use a payload like:
 ```json
 {
-  "includePath": [
-    "${workspaceFolder}/**",
-    "/usr/include/gtk-3.0",
-    "/usr/include/glib-2.0",
-    "/usr/lib/arm-linux-gnueabihf/glib-2.0/include",
-    "/usr/include/gio-unix-2.0/",
-    "/usr/include/cairo",
-    "/usr/include/pango-1.0",
-    "/usr/include/harfbuzz",
-    "/usr/include/gdk-pixbuf-2.0",
-    "/usr/include/pixman-1",
-    "/usr/include/freetype2",
-    "/usr/include/libpng16"
-  ]
+"IotData": 22.5,
+"MessageDate": "2026-06-02T12:34:56Z",
+"DeviceId": "rpi1",
+"DesiredTemperature": 24,
+"TelemetryIntervalMs": 5000
 }
 ```
 
 ---
 
-## Notes
+## Troubleshooting
 
-- The GUI provides real-time feedback for GPIO and temperature.
-- All resources (GPIO, MQTT, GTK) are properly cleaned up on exit.
-- The project is modular: see `gpio/`, `i2c/`, `mqtt/`, and `gtk/` for source organization.
+- Check module status on the device:
+    - Run `sudo iotedge list` on the edge device to see module names and statuses (running/restarting/failed).
+
+- No telemetry in UI:
+    - Verify Event Hubs reader can connect (check `WebApp` logs).
+    - Confirm telemetry reaches IoT Hub / Event Hubs.
+
+ - Twin updates not applied:
+    - Verify `IotHubConnectionString` and permissions. Inspect twin with Azure Portal or:
+        ```bash
+        az iot hub module-twin show --hub-name <HubName> --device-id <deviceId> --module-id remotemodule
+        ```
+
+- Module not reacting to twin:
+    - Confirm `remotemodule` subscribes to module twin updates and parses `properties.desired` fields.
+
+---
+
+## Development Notes
+
+- Frontend assets: `WebApp/public/` (`index.html`, `js/chart-device-data.js`, `css/style.css`).
+- Backend: `WebApp/server.js` contains API routes and event reader logic.
+- Native module: `IotEdge/workspace/iotedge-solution/modules/remotemodule/` (C sources, Dockerfiles, `module.json`).
+
+---
