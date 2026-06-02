@@ -5,18 +5,25 @@ body {
   text-align: center;
 }
 
+a {
+  color: #00B7FF;
+}
+
+/* Header layout */
 .flexHeader {
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
   justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  gap: 12px;
 }
 
-a {
-  color: #00B7FF;
-}
-
-body select {
+/* Select styling (applies to legacy `.select_box` and new `.small-input`) */
+select,
+select.select_box,
+select.small-input {
   padding: 10px 70px 10px 13px;
   max-width: 100%;
   height: auto;
@@ -27,13 +34,12 @@ body select {
   color: #444444;
   line-height: 16px;
   appearance: none;
-  /* this is must */
   -webkit-appearance: none;
   -moz-appearance: none;
 }
 
-/* body select.select_box option */
-body select option {
+/* Option padding */
+select option {
   padding: 0 4px;
 }
 
@@ -46,17 +52,12 @@ select:disabled::-ms-expand {
   background: #f60;
 }
 
-.flexHeader {
-  display: flex;
-  align-items: center;
-  padding: 8px;
-  gap: 12px;
-}
-
+/* Controls container */
 .controls {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .small-label {
@@ -96,15 +97,15 @@ select:disabled::-ms-expand {
   color: #d04545;
 }
 
-/* body title shown under controls */
 .mainTitle {
   margin: 8px 0 16px;
   font-size: 1.25rem;
   font-weight: 600;
 }
 
-/* Override for the small select control so the full placeholder is visible */
-select.small-input {
+/* Override for compact selects used in the header */
+select.small-input,
+select.select_box {
   padding: 6px 32px 6px 8px !important;
   background-position: right 8px center !important;
   background-repeat: no-repeat !important;
@@ -121,8 +122,8 @@ input.small-input[type="number"] {
   width: 110px;
 }
 
-/* Allow controls to wrap on very small screens */
-.controls {
-  flex-wrap: wrap;
-  align-items: center;
+/* Ensure chart has a reasonable visible height */
+#iotChart {
+  max-width: 100%;
+  height: 360px;
 }
