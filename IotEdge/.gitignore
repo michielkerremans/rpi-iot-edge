@@ -5,3 +5,4 @@ workspace
 !workspace/iotedge-solution/modules/remotemodule/Source/
 !workspace/iotedge-solution/modules/remotemodule/Source/**
 !workspace/iotedge-solution/modules/remotemodule/main.c
+!workspace/iotedge-solution/.env-template
