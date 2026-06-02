@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
+#include <string.h>
+#include <stdbool.h>
 #include "iothub_module_client_ll.h"
 #include "iothub_message.h"
 #include "azure_c_shared_utility/threadapi.h"
@@ -14,8 +16,12 @@
 #define GPIO_HEAT 17 // connected to pin 27
 #define GPIO_COOL 19 // connected to pin 26
 
-static int desired_temperature = 20; // default desired temperature
-static int temp_telemetry = 0;       // 0 = off, 1 = on for temperature telemetry
+static int desired_temperature = 20;     // default desired temperature
+static int telemetry_interval_ms = 5000; // default telemetry interval (ms); 0 disables periodic telemetry
+
+const int loop_tick_ms = 100;     // control loop tick (ms)
+static uint32_t elapsed_ms = 0;   // accumulator for telemetry interval
+static bool mode_changed = false; // mode changed and pending telemetry
 
 static void TwinCallback(DEVICE_TWIN_UPDATE_STATE updateState, const unsigned char *payload, size_t size, void *userContextCallback)
 {
@@ -25,8 +31,19 @@ static void TwinCallback(DEVICE_TWIN_UPDATE_STATE updateState, const unsigned ch
     if ((found = strstr((const char *)payload, "\"desired_temperature\":")))
         desired_temperature = atoi(found + strlen("\"desired_temperature\":"));
 
-    if ((found = strstr((const char *)payload, "\"temp_telemetry\":")))
-        temp_telemetry = atoi(found + strlen("\"temp_telemetry\":"));
+    if ((found = strstr((const char *)payload, "\"telemetry_interval_ms\":")))
+    {
+        int new_interval = atoi(found + strlen("\"telemetry_interval_ms\":"));
+        if (new_interval != telemetry_interval_ms)
+        {
+            telemetry_interval_ms = new_interval;
+            /* initialize elapsed_ms so first tick triggers after one loop tick */
+            if (telemetry_interval_ms > 0)
+                elapsed_ms = (telemetry_interval_ms > loop_tick_ms) ? telemetry_interval_ms - loop_tick_ms : 0;
+            else
+                elapsed_ms = 0;
+        }
+    }
 }
 
 void send_telemetry(IOTHUB_MODULE_CLIENT_LL_HANDLE client, const char *payload)
@@ -95,43 +112,73 @@ int main(void)
     send_telemetry(client, "{\"status\": \"GPIOs configured successfully\"}");
     printf("GPIOs configured successfully.\n");
 
-    uint8_t temp, last_temp = 0xFF; // 0xFF is an impossible value for TC74
-    char payload[64];
+    /* initialize elapsed_ms so first tick triggers after one loop tick */
+    if (telemetry_interval_ms > 0)
+        elapsed_ms = (telemetry_interval_ms > loop_tick_ms) ? telemetry_interval_ms - loop_tick_ms : 0;
+    else
+        elapsed_ms = 0;
+
+    uint8_t temp;
+    char payload[128];
 
     Mode last_mode = MODE_OFF;
     Mode current_mode = MODE_OFF;
 
     while (1)
     {
-        if (TC74_Read(0x48, &temp) == 0)
-        {
-            if (temp != last_temp)
-            {
-                snprintf(payload, sizeof(payload), "{\"temperature\": \"%d\"}", temp);
-                if (temp_telemetry)
-                    send_telemetry(client, payload);
-                last_temp = temp;
+        bool read_ok = (TC74_Read(0x48, &temp) == 0);
 
-                if (temp < desired_temperature)
+        if (read_ok)
+        {
+            if (temp < desired_temperature)
+            {
+                GPIO_Write(GPIO_HEAT, 1);
+                GPIO_Write(GPIO_COOL, 0);
+                current_mode = MODE_HEAT;
+            }
+            else if (temp > desired_temperature)
+            {
+                GPIO_Write(GPIO_HEAT, 0);
+                GPIO_Write(GPIO_COOL, 1);
+                current_mode = MODE_COOL;
+            }
+            else
+            {
+                GPIO_Write(GPIO_HEAT, 0);
+                GPIO_Write(GPIO_COOL, 0);
+                current_mode = MODE_OFF;
+            }
+
+            if (current_mode != last_mode)
+            {
+                mode_changed = true; // mark mode to be reported at next telemetry tick
+                last_mode = current_mode;
+            }
+        }
+        else
+            printf("Failed to read temperature\n");
+
+        // process the queue
+        IoTHubModuleClient_LL_DoWork(client);
+
+        // counter-based telemetry scheduling (0 disables periodic telemetry)
+        if (telemetry_interval_ms > 0)
+        {
+            elapsed_ms += loop_tick_ms;
+            if (elapsed_ms >= (uint32_t)telemetry_interval_ms)
+            {
+                if (read_ok)
                 {
-                    GPIO_Write(GPIO_HEAT, 1); // Turn on heater
-                    GPIO_Write(GPIO_COOL, 0); // Turn off cooler
-                    current_mode = MODE_HEAT;
-                }
-                else if (temp > desired_temperature)
-                {
-                    GPIO_Write(GPIO_HEAT, 0); // Turn off heater
-                    GPIO_Write(GPIO_COOL, 1); // Turn on cooler
-                    current_mode = MODE_COOL;
+                    snprintf(payload, sizeof(payload), "{\"temperature\": %d}", temp);
+                    send_telemetry(client, payload);
                 }
                 else
                 {
-                    GPIO_Write(GPIO_HEAT, 0); // Turn off heater
-                    GPIO_Write(GPIO_COOL, 0); // Turn off cooler
-                    current_mode = MODE_OFF;
+                    snprintf(payload, sizeof(payload), "{\"error\": \"Failed to read temperature\"}");
+                    send_telemetry(client, payload);
                 }
 
-                if (current_mode != last_mode)
+                if (mode_changed)
                 {
                     if (current_mode == MODE_HEAT)
                         send_telemetry(client, "{\"mode\": \"HEAT\"}");
@@ -140,19 +187,14 @@ int main(void)
                     else
                         send_telemetry(client, "{\"mode\": \"OFF\"}");
 
-                    last_mode = current_mode;
+                    mode_changed = false;
                 }
+
+                elapsed_ms = 0;
             }
         }
-        else
-        {
-            printf("Failed to read temperature\n");
-            send_telemetry(client, "{\"error\": \"Failed to read temperature\"}");
-        }
 
-        // Process the queue
-        IoTHubModuleClient_LL_DoWork(client);
-        ThreadAPI_Sleep(100);
+        ThreadAPI_Sleep(loop_tick_ms);
     }
 
     GPIO_Cleanup();
